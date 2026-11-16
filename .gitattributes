@@ -1,0 +1,2 @@
+# Preserve the exact supplied overlay bytes, including upstream whitespace.
+overrides/** -whitespace

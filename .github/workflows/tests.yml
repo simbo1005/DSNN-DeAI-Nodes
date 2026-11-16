@@ -1,0 +1,53 @@
+name: Validate De-AI node stack
+on: [push, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q
+      - name: Install CPU smoke-test dependencies
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get install -y --no-install-recommends libimage-exiftool-perl libgl1 libglib2.0-0 ffmpeg
+          python -m pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cpu
+      - name: Prepare reference ComfyUI
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/Comfy-Org/ComfyUI.git "$RUNNER_TEMP/ComfyUI"
+          git -C "$RUNNER_TEMP/ComfyUI" fetch --depth=1 origin e9afbccc2669677076feb08e52658f129cd8c12b
+          git -C "$RUNNER_TEMP/ComfyUI" checkout --detach e9afbccc2669677076feb08e52658f129cd8c12b
+          python - <<'PY'
+          import importlib.metadata as m,os,pathlib
+          target=pathlib.Path(os.environ['RUNNER_TEMP'])/'torch-constraints.txt'
+          target.write_text(''.join(n+'=='+m.version(n)+'\n' for n in ('torch','torchvision','torchaudio')))
+          PY
+          python -m pip install -c "$RUNNER_TEMP/torch-constraints.txt" -r "$RUNNER_TEMP/ComfyUI/requirements.txt"
+      - name: Install the four packages and exact overrides
+        run: python install.py --comfyui "$RUNNER_TEMP/ComfyUI" --python "$(command -v python)"
+      - name: Execute synthetic De-AI image chain
+        run: |
+          python "$RUNNER_TEMP/ComfyUI/main.py" --cpu --listen 127.0.0.1 --port 8188 --disable-auto-launch > "$RUNNER_TEMP/comfyui-smoke.log" 2>&1 &
+          comfy_pid=$!
+          trap 'kill "$comfy_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time,urllib.request
+          for attempt in range(120):
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:8188/system_stats',timeout=3).close()
+                  break
+              except OSError:time.sleep(1)
+          else:raise SystemExit('ComfyUI did not start')
+          PY
+          python scripts/smoke_comfy.py --comfyui "$RUNNER_TEMP/ComfyUI"
+      - name: Show startup log on failure
+        if: failure()
+        run: cat "$RUNNER_TEMP/comfyui-smoke.log" 2>/dev/null || true

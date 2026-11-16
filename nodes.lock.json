@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "reference_comfyui_version": "0.45.0",
+  "workflow_sha256": "e9063b01238e0cb0ce62e0ba74241da52053234096a9bd68e6a310e043775127",
+  "system_packages": [
+    "libimage-exiftool-perl"
+  ],
+  "core_node_types": [
+    "LoadImage",
+    "PreviewAny",
+    "PrimitiveInt",
+    "UpscaleModelLoader",
+    "ImageUpscaleWithModel",
+    "ImageScaleBy"
+  ],
+  "packages": [
+    {
+      "name": "ComfyUI_VintageEffect",
+      "repository": "https://github.com/brucew4yn3rp/ComfyUI_VintageEffect.git",
+      "commit": "9f7c52c992a3ca7b9498799291fae2ccc53360d2",
+      "required_node_types": [
+        "Vintage Effect"
+      ],
+      "overrides": []
+    },
+    {
+      "name": "Bond-Node-Suite",
+      "repository": "https://github.com/bondngn-studios/Bond-Node-Suite.git",
+      "commit": "8d2f6ce3abd471442bfd6785226154ec605aea0a",
+      "required_node_types": [
+        "BondSaveWithCustomMetadata"
+      ],
+      "overrides": [
+        {
+          "source": "overrides/Bond-Node-Suite/bond_nodes.py",
+          "destination": "bond_nodes.py",
+          "upstream_sha256": "75066c55016fb96468d6e4807e2cd29073fcdbb20f033367caf207cd79230fda",
+          "sha256": "fd303df9a05775505af0418607fa8724cfa91a40d9737278a2e6ea8fef43a07d"
+        }
+      ]
+    },
+    {
+      "name": "ComfyUI_LC123_nodes",
+      "repository": "https://github.com/lonecatone23/ComfyUI_LC123_nodes.git",
+      "commit": "04041dbeb32cb1f3b8c269882da1d419d1242c61",
+      "required_node_types": [
+        "LCLensProfile"
+      ],
+      "overrides": []
+    },
+    {
+      "name": "radiance",
+      "repository": "https://github.com/FXTD-Studios/radiance.git",
+      "commit": "0174a5811b64665714a366b209cfd73d44418e91",
+      "required_node_types": [
+        "RadianceCompressionArtifacts"
+      ],
+      "overrides": [
+        {
+          "source": "overrides/radiance/film/camera.py",
+          "destination": "film/camera.py",
+          "upstream_sha256": "9cc45f924bac4aea43882876c195d6e9e8eebdb62ff060a19eeffdf390a8b4ec",
+          "sha256": "1215b6d1d9e300a5b6e9f870dfe333853028e481f4bf277492655c0e39b33bd3"
+        }
+      ]
+    }
+  ]
+}
