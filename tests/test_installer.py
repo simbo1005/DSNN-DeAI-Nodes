@@ -109,3 +109,24 @@ def test_install_lock_is_released_even_on_failure(tmp_path):
                 with installer.install_lock(tmp_path):pass
             raise RuntimeError('synthetic')
     assert not (tmp_path/'.dsnn-deai/install.lock').exists()
+
+
+def test_runtime_install_update_disable_and_local_edit_preservation(tmp_path):
+    custom=tmp_path/'custom_nodes';custom.mkdir();state=tmp_path/'.dsnn-deai';state.mkdir()
+    lock=copy.deepcopy(installer.load_lock());receipt=[]
+    for package in lock['packages']:
+        folder=custom/package['name'];folder.mkdir()
+        source=folder/package['performance_source']['path'];source.parent.mkdir(parents=True,exist_ok=True)
+        source.write_text('fixture source')
+        package['performance_source']['sha256']=installer.digest(source)
+        receipt.append({'path':str(folder)})
+    installer.install_runtime(custom,state,receipt,lock,True)
+    helper=custom/'DSNN-DeAI-Performance'
+    config=json.loads((helper/'targets.json').read_text());assert config['enabled']
+    assert len(config['targets'])==4 and (helper/'LICENSE.LC123-MIT.txt').is_file()
+    installer.install_runtime(custom,state,receipt,lock,False)
+    assert json.loads((helper/'targets.json').read_text())['enabled'] is False
+    (helper/'performance.py').write_text('my local customization')
+    with pytest.raises(RuntimeError,match='modified performance helper'):
+        installer.install_runtime(custom,state,receipt,lock,True)
+    assert (helper/'performance.py').read_text()=='my local customization'

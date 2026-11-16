@@ -62,6 +62,10 @@ def load_lock():
             safe_relative(ROOT,overlay['destination'])
             if digest(source)!=overlay['sha256']:raise RuntimeError('The bundled override changed: '+overlay['source'])
             if not re.fullmatch(r'[a-f0-9]{64}',overlay['upstream_sha256']):raise RuntimeError('Invalid upstream hash')
+        performance=package.get('performance_source')
+        if performance:
+            safe_relative(ROOT,performance['path'])
+            if not re.fullmatch(r'[a-f0-9]{64}',performance['sha256']):raise RuntimeError('Invalid performance source hash')
     return lock
 
 
@@ -193,7 +197,43 @@ def install_lock(comfy):
     finally:path.unlink(missing_ok=True)
 
 
-def install(comfy, python, lock, skip_deps=False, skip_system=False):
+def install_runtime(custom, state, receipt, lock, enabled):
+    """Install an owned helper package; the four node sources remain untouched."""
+    destination=custom/'DSNN-DeAI-Performance'
+    if destination.is_symlink():raise RuntimeError('Preserving a symlinked performance helper')
+    history=state/'runtime-files.json'
+    previous=json.loads(history.read_text()) if history.is_file() else {}
+    config={'enabled':enabled,'targets':{}}
+    for package,installed in zip(lock['packages'],receipt):
+        spec=package.get('performance_source')
+        if not spec:continue
+        target=safe_relative(Path(installed['path']),spec['path'])
+        if digest(target)!=spec['sha256']:raise RuntimeError('Performance source check failed: '+str(target))
+        for node in package['required_node_types']:
+            config['targets'][node]={'path':str(target.resolve()),'sha256':spec['sha256']}
+    contents={name:(ROOT/'runtime'/name).read_bytes() for name in ('__init__.py','performance.py')}
+    contents['LICENSE.LC123-MIT.txt']=(ROOT/'LICENSES/LC123-MIT.txt').read_bytes()
+    contents['LICENSE.DSNN-MIT.txt']=(ROOT/'LICENSE').read_bytes()
+    contents['targets.json']=(json.dumps(config,indent=2)+'\n').encode()
+    if destination.exists():
+        unknown={p.name for p in destination.iterdir()}-set(contents)-{'__pycache__'}
+        if unknown:raise RuntimeError('Preserving an unrecognized performance helper folder')
+        for name,content in contents.items():
+            path=destination/name
+            if path.is_symlink():raise RuntimeError('Preserving a symlinked performance file')
+            if path.exists() and digest(path) not in {previous.get(name),hashlib.sha256(content).hexdigest()}:
+                raise RuntimeError('Preserving a modified performance helper: '+str(path))
+    destination.mkdir(exist_ok=True)
+    for name,content in contents.items():
+        path=destination/name
+        with tempfile.NamedTemporaryFile(dir=destination,prefix='.dsnn-',delete=False) as output:
+            output.write(content);temporary=Path(output.name)
+        try:os.replace(temporary,path)
+        finally:temporary.unlink(missing_ok=True)
+    history.write_text(json.dumps({name:digest(destination/name) for name in contents},indent=2)+'\n')
+
+
+def install(comfy, python, lock, skip_deps=False, skip_system=False, performance=True):
     custom=comfy/'custom_nodes';custom.mkdir(exist_ok=True)
     with install_lock(comfy) as state, tempfile.TemporaryDirectory(prefix='staging-',dir=state) as temporary:
         plans=[]
@@ -215,6 +255,7 @@ def install(comfy, python, lock, skip_deps=False, skip_system=False):
             destination=existing or custom/package['name']
             if not existing:folder.rename(destination)
             receipt.append({'name':package['name'],'commit':package['commit'],'path':str(destination),'overrides':{p['destination']:p['sha256'] for p in package['overrides']}})
+        install_runtime(custom,state,receipt,lock,performance)
         (state/'installed.json').write_text(json.dumps({'packages':receipt,'python':python,'dependencies_checked':not skip_deps,'exiftool_checked':not skip_system},indent=2)+'\n')
     print('All four packages installed. Restart ComfyUI, then refresh the browser.',flush=True)
 
@@ -236,11 +277,12 @@ def main():
     parser.add_argument('--verify',metavar='COMFYUI_URL',help='Only check node registration after a restart')
     parser.add_argument('--skip-deps',action='store_true',help='Advanced: skip Python package installation/checks')
     parser.add_argument('--skip-system-tools',action='store_true',help='Advanced: skip ExifTool installation/check')
+    parser.add_argument('--no-performance',action='store_true',help='Install the original node behavior without the optional runtime optimizations')
     options=parser.parse_args();lock=load_lock()
     if options.verify:verify(options.verify,lock);return
     comfy=comfy_root(options.comfyui);python=choose_python(comfy,options.python)
     print('ComfyUI:',comfy,'\nPython:',python,flush=True)
-    install(comfy,python,lock,options.skip_deps,options.skip_system_tools)
+    install(comfy,python,lock,options.skip_deps,options.skip_system_tools,not options.no_performance)
 
 
 if __name__=='__main__':

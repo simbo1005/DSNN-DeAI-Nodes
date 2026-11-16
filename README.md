@@ -11,6 +11,37 @@ Pinned custom-node stack for the De-AI image-processing workflow. The installer 
 
 The workflow's other six types are built into ComfyUI: `LoadImage`, `PreviewAny`, `PrimitiveInt`, `UpscaleModelLoader`, `ImageUpscaleWithModel`, and `ImageScaleBy`.
 
+## GPU and performance runtime
+
+Re-run the installer and restart ComfyUI to enable the included performance helper. It uses the existing node IDs and preserves your workflow file, effect parameters, node order, output dimensions, JPEG passes, quality and colour sampling.
+
+- **LC Lens Profile:** batched float32 interpolation on ComfyUI's CUDA device when memory permits; bounded caching of lens grids. CPU execution is supported, with the original CPU method used after a CUDA out-of-memory error. It honours ComfyUI's CPU mode and does not install another Torch or attention wheel.
+- **LC before/after previews:** the generated thumbnails have a maximum edge of 1024 pixels. The `IMAGE` output remains full resolution. This reduces PNG encoding, image transfer and browser overhead. Inspect the final Bond output for full-resolution details, or set the preview edge to 0 for original full-size previews.
+- **Bond metadata:** identical EXIF reads within one save are reused, with invalidation after writes. Successful location lookups are cached for up to 24 hours (128 cities maximum); failed lookups are retried. JPEG quality 95, 4:4:4 and encoder optimization remain as supplied.
+- **Vintage:** a redundant final image copy is avoided for single-image batches. Its Pillow JPEG codec, passes and image effects remain unchanged.
+- **Timings:** console lines beginning `[DSNN De-AI]` report the four custom nodes, model-based upscaling and resizing when executed. Cached ComfyUI nodes do not produce a new timing.
+
+JPEG encoding and EXIF writing remain on the CPU. The runtime does not change the 4× upscaler, move the resize, or lower quality to produce a speedup. CUDA interpolation uses the same float32 equations; CPU/GPU rounding can differ, so cross-device results are not guaranteed to be bit-identical. No real-CUDA speed claim is made by the CPU CI checks.
+
+After an image runs, append `/dsnn/deai/performance` to your ComfyUI address to see observed devices, individual durations and a summary sorted by mean duration. On Vast's internal port this is commonly:
+
+```bash
+curl -fsS http://127.0.0.1:18188/dsnn/deai/performance | python -m json.tool
+```
+
+Look for `LCLensProfile` with `device=cuda:0` in the log. CPU fallback includes its reason. The helper checks each custom-node source path and hash before optimizing; unfamiliar versions retain their original behavior and appear under `warnings` in the report.
+
+Optional template environment variables (restart ComfyUI after changing them):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DSNN_DEAI_PERFORMANCE` | `1` | Set to `0` for the baseline behavior, including the two supplied source overrides. |
+| `DSNN_DEAI_DEVICE` | `auto` | `auto`/`cuda` prefer ComfyUI's CUDA device with safe CPU fallback; `cpu` requests CPU math. |
+| `DSNN_DEAI_PREVIEW_EDGE` | `1024` | Thumbnail maximum edge; `0` restores full-resolution previews. |
+| `DSNN_DEAI_GRID_CACHE_MB` | `512` | Maximum lens-map cache size; `0` disables caching. |
+
+Alternatively, install with `--no-performance` and restart to retain the baseline node behavior. The helper lives at `custom_nodes/DSNN-DeAI-Performance`; it adds no new workflow node types. Your supplied Bond and camera files stay byte-identical on disk.
+
 ## Install
 
 Run these in your instance terminal, replacing the ComfyUI path if needed:
@@ -65,6 +96,8 @@ This repository installs node code. Continue using your own De-AI workflow and i
 
 ## Validation and provenance
 
-CI tests patch integrity, backups/idempotence, local-edit preservation, duplicate detection, path safety and Python version constraints. A Linux CPU smoke test installs the actual four packages into pinned ComfyUI, checks registration, and executes a synthetic image through Vintage Effect → LC Lens Profile → patched Radiance compression → patched Bond. The output must be a 4:4:4 JPEG. No diffusion or upscale weights are downloaded for that test.
+CI tests patch integrity, backups/idempotence, local-edit preservation, duplicate detection, path safety and Python version constraints. The lens math is compared against the independently captured pinned LC123 method for all eight lenses and both aberration modes, including batch, dtype and alpha checks. A CUDA equivalence test is included and runs when a CUDA device is available.
+
+A Linux CPU smoke test installs the actual four packages into pinned ComfyUI and executes the synthetic image chain twice, with performance mode disabled and enabled. It checks node registration, 4:4:4 JPEG output, final decoded-pixel agreement, helper activation and metadata-read reuse. No diffusion or upscale weights are downloaded for that test.
 
 See [third-party notices](THIRD_PARTY.md) for upstream ownership and licensing. DSNN's installer does not rename the upstream node IDs, so existing workflow links remain compatible.

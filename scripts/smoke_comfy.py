@@ -35,7 +35,8 @@ def main():
     import numpy as np
     from PIL import Image,JpegImagePlugin
     parser=argparse.ArgumentParser();parser.add_argument('--comfyui',type=Path,required=True)
-    parser.add_argument('--url',default='http://127.0.0.1:8188');options=parser.parse_args()
+    parser.add_argument('--url',default='http://127.0.0.1:8188')
+    parser.add_argument('--label',choices=('baseline','optimized'),default='optimized');options=parser.parse_args()
     root=options.comfyui;url=options.url.rstrip('/')
     install.verify(url,install.load_lock())
     folder=root/'input';folder.mkdir(exist_ok=True)
@@ -51,7 +52,7 @@ def main():
         if node=='RadianceCompressionArtifacts':value.update(block_size=1,quality=92,color_subsampling=False,noise_amount=0,seed=42)
         if node=='BondSaveWithCustomMetadata':
             # Keep the test entirely local (no geocoding or source metadata).
-            value.update(filename_prefix='dsnn-deai-smoke/result',location_city='',source_filepath='',artist='DSNN automated test',custom_xmp_tags='')
+            value.update(filename_prefix='dsnn-deai-smoke-'+options.label+'/result',location_city='',source_filepath='',artist='DSNN automated test',custom_xmp_tags='')
         graph[str(index)]={'class_type':node,'inputs':value};previous=[str(index),0]
     result=request(url+'/prompt',{'prompt':graph,'client_id':'dsnn-deai-ci'})
     prompt_id=result['prompt_id']
@@ -62,11 +63,26 @@ def main():
     else:raise RuntimeError('Synthetic De-AI execution did not complete')
     job=history[prompt_id]
     if job.get('status',{}).get('status_str')!='success':raise RuntimeError(json.dumps(job.get('status',{}),indent=2))
-    saved=list((root/'output/dsnn-deai-smoke').glob('*.jpg'))
+    saved=list((root/('output/dsnn-deai-smoke-'+options.label)).glob('*.jpg'))
     if len(saved)!=1:raise RuntimeError('Bond did not save exactly one JPEG')
     with Image.open(saved[0]) as output:
         assert output.format=='JPEG' and output.mode=='RGB' and output.size==(128,128)
         assert JpegImagePlugin.get_sampling(output)==0,'JPEG must retain the uploaded 4:4:4 setting'
+        pixels=np.array(output)
+    runtime=request(url+'/dsnn/deai/performance')
+    if options.label=='baseline':
+        assert runtime['enabled'] is False and runtime['patched']==[]
+    else:
+        assert runtime['enabled'] is True and not runtime['warnings'],runtime
+        assert {'Vintage Effect','LCLensProfile','RadianceCompressionArtifacts','BondSaveWithCustomMetadata'}<=set(runtime['patched'])
+        bond=next(r for r in reversed(runtime['recent']) if r['node']=='BondSaveWithCustomMetadata')
+        assert bond['metadata_reads']==1,bond
+        baseline_file=next((root/'output/dsnn-deai-smoke-baseline').glob('*.jpg'))
+        with Image.open(baseline_file) as original:expected=np.array(original)
+        maximum=int(np.abs(pixels.astype(int)-expected.astype(int)).max())
+        assert maximum<=1,f'Optimized CPU output differs by {maximum} code values'
+        print('Baseline comparison: max decoded JPEG channel difference =',maximum)
+        print('Performance:',json.dumps(runtime['summary'],indent=2))
     print('PASS: all 10 node types registered; Vintage → LC Lens → Radiance block_size=1 → patched Bond JPEG executed successfully.')
 
 

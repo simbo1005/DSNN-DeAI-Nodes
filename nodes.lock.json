@@ -21,7 +21,11 @@
       "required_node_types": [
         "Vintage Effect"
       ],
-      "overrides": []
+      "overrides": [],
+      "performance_source": {
+        "path": "node.py",
+        "sha256": "b0e6b090267876940e2b211cd2efd1769198638ac663986e349551354c54c320"
+      }
     },
     {
       "name": "Bond-Node-Suite",
@@ -37,7 +41,11 @@
           "upstream_sha256": "75066c55016fb96468d6e4807e2cd29073fcdbb20f033367caf207cd79230fda",
           "sha256": "fd303df9a05775505af0418607fa8724cfa91a40d9737278a2e6ea8fef43a07d"
         }
-      ]
+      ],
+      "performance_source": {
+        "path": "bond_nodes.py",
+        "sha256": "fd303df9a05775505af0418607fa8724cfa91a40d9737278a2e6ea8fef43a07d"
+      }
     },
     {
       "name": "ComfyUI_LC123_nodes",
@@ -46,7 +54,11 @@
       "required_node_types": [
         "LCLensProfile"
       ],
-      "overrides": []
+      "overrides": [],
+      "performance_source": {
+        "path": "lc_image_tools.py",
+        "sha256": "26f44dccc9e34577f3e06dfaa1062af776a807841a1f2d778df78bd5418ae3c6"
+      }
     },
     {
       "name": "radiance",
@@ -62,7 +74,11 @@
           "upstream_sha256": "9cc45f924bac4aea43882876c195d6e9e8eebdb62ff060a19eeffdf390a8b4ec",
           "sha256": "1215b6d1d9e300a5b6e9f870dfe333853028e481f4bf277492655c0e39b33bd3"
         }
-      ]
+      ],
+      "performance_source": {
+        "path": "film/camera.py",
+        "sha256": "1215b6d1d9e300a5b6e9f870dfe333853028e481f4bf277492655c0e39b33bd3"
+      }
     }
   ]
 }

@@ -33,12 +33,17 @@ jobs:
           python -m pip install -c "$RUNNER_TEMP/torch-constraints.txt" -r "$RUNNER_TEMP/ComfyUI/requirements.txt"
       - name: Install the four packages and exact overrides
         run: python install.py --comfyui "$RUNNER_TEMP/ComfyUI" --python "$(command -v python)"
+      - name: Image equivalence and runtime tests
+        run: python -m pytest -q
       - name: Execute synthetic De-AI image chain
         run: |
-          python "$RUNNER_TEMP/ComfyUI/main.py" --cpu --listen 127.0.0.1 --port 8188 --disable-auto-launch > "$RUNNER_TEMP/comfyui-smoke.log" 2>&1 &
-          comfy_pid=$!
-          trap 'kill "$comfy_pid" 2>/dev/null || true' EXIT
-          python - <<'PY'
+          for mode in baseline optimized; do
+            enabled=1
+            if [ "$mode" = baseline ]; then enabled=0; fi
+            DSNN_DEAI_PERFORMANCE="$enabled" python "$RUNNER_TEMP/ComfyUI/main.py" --cpu --listen 127.0.0.1 --port 8188 --disable-auto-launch > "$RUNNER_TEMP/comfyui-smoke-$mode.log" 2>&1 &
+            comfy_pid=$!
+            trap 'kill "$comfy_pid" 2>/dev/null || true' EXIT
+            python - <<'PY'
           import time,urllib.request
           for attempt in range(120):
               try:
@@ -47,7 +52,11 @@ jobs:
               except OSError:time.sleep(1)
           else:raise SystemExit('ComfyUI did not start')
           PY
-          python scripts/smoke_comfy.py --comfyui "$RUNNER_TEMP/ComfyUI"
+            python scripts/smoke_comfy.py --comfyui "$RUNNER_TEMP/ComfyUI" --label "$mode"
+            kill "$comfy_pid"
+            wait "$comfy_pid" || true
+            trap - EXIT
+          done
       - name: Show startup log on failure
         if: failure()
-        run: cat "$RUNNER_TEMP/comfyui-smoke.log" 2>/dev/null || true
+        run: cat "$RUNNER_TEMP"/comfyui-smoke-*.log 2>/dev/null || true

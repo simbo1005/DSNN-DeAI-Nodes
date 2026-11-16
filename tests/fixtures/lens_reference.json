@@ -1,0 +1,71 @@
+{
+  "upstream": "https://github.com/lonecatone23/ComfyUI_LC123_nodes/blob/04041dbeb32cb1f3b8c269882da1d419d1242c61/lc_image_tools.py",
+  "license": "../../LICENSES/LC123-MIT.txt",
+  "method": "def run(self, image, lens, mode, strength=1.0, look='Custom'):\n    if strength < 0.01:\n        return _preview(self, image, image)\n    p = _LENS_PROFILES[lens]\n    sign = 1.0 if mode == 'Add Aberrations' else -1.0\n    k1 = p['k1'] * strength * sign\n    k2 = p['k2'] * strength * sign\n    ca_r = p['ca_r'] * strength * sign\n    ca_b = p['ca_b'] * strength * sign\n    vig = p['vig'] * strength\n    vig_mid = p['vig_mid']\n    h, w = (image.shape[1], image.shape[2])\n    cy, cx = (h / 2.0, w / 2.0)\n    scale = min(h, w) / 1024.0\n    device = image.device\n    yy = torch.arange(h, dtype=torch.float32, device=device)\n    xx = torch.arange(w, dtype=torch.float32, device=device)\n    yy, xx = torch.meshgrid(yy, xx, indexing='ij')\n    ny = (yy - cy) / max(cy, 1e-06)\n    nx = (xx - cx) / max(cx, 1e-06)\n    r2 = nx * nx + ny * ny\n    r4 = r2 * r2\n    r = torch.sqrt(r2 + 1e-08)\n    max_r = math.sqrt(cx * cx + cy * cy) + 1e-06\n    shifts = [ca_r * scale, 0.0, ca_b * scale]\n    grids = []\n    for c in range(3):\n        distort = 1.0 + k1 * r2 + k2 * r4\n        ca = shifts[c]\n        total = distort * (1.0 + ca / max_r * r) if abs(ca) > 0.01 else distort\n        src_x = nx * total * cx + cx\n        src_y = ny * total * cy + cy\n        gx = src_x / max(w - 1, 1) * 2 - 1\n        gy = src_y / max(h - 1, 1) * 2 - 1\n        grids.append(torch.stack((gx, gy), dim=-1).unsqueeze(0))\n    vig_mul = None\n    if vig > 0.01:\n        cos_th = 1.0 / torch.sqrt(1.0 + r2)\n        falloff = cos_th ** 4\n        transition = ((r - vig_mid * 0.8) / 0.4).clamp(0, 1)\n        if mode == 'Add Aberrations':\n            vig_mul = (1.0 - transition * (1.0 - falloff) * vig * 2).clamp(0, 1).unsqueeze(-1)\n        else:\n            vig_mul = (1.0 + transition * (1.0 / falloff.clamp(0.3, 1.0) - 1.0) * vig).unsqueeze(-1)\n    results = []\n    for i in range(image.shape[0]):\n        img = image[i].float()\n        out = torch.empty_like(img)\n        for c in range(3):\n            ch = img[..., c].unsqueeze(0).unsqueeze(0)\n            sampled = F.grid_sample(ch, grids[c], mode='bilinear', padding_mode='reflection', align_corners=True)\n            out[..., c] = sampled.squeeze()\n        if vig_mul is not None:\n            out = out * vig_mul\n        results.append(out.clamp(0, 1))\n    return _preview(self, torch.stack(results, dim=0).to(image.dtype), image)",
+  "presets": {
+    "Canon EF 50mm f/1.8": {
+      "k1": -0.08,
+      "k2": 0.02,
+      "ca_r": -1.2,
+      "ca_b": 1.0,
+      "vig": 0.35,
+      "vig_mid": 0.55
+    },
+    "Canon EF 24-70mm f/2.8": {
+      "k1": -0.12,
+      "k2": 0.04,
+      "ca_r": -1.5,
+      "ca_b": 1.3,
+      "vig": 0.45,
+      "vig_mid": 0.5
+    },
+    "Nikon AF-S 35mm f/1.8": {
+      "k1": -0.1,
+      "k2": 0.025,
+      "ca_r": -1.0,
+      "ca_b": 0.9,
+      "vig": 0.3,
+      "vig_mid": 0.55
+    },
+    "Nikon AF-S 85mm f/1.4": {
+      "k1": 0.04,
+      "k2": -0.01,
+      "ca_r": -0.6,
+      "ca_b": 0.5,
+      "vig": 0.2,
+      "vig_mid": 0.6
+    },
+    "Sony FE 55mm f/1.8": {
+      "k1": -0.06,
+      "k2": 0.015,
+      "ca_r": -0.8,
+      "ca_b": 0.7,
+      "vig": 0.25,
+      "vig_mid": 0.55
+    },
+    "Sony FE 24-70mm f/2.8": {
+      "k1": -0.14,
+      "k2": 0.05,
+      "ca_r": -1.6,
+      "ca_b": 1.4,
+      "vig": 0.5,
+      "vig_mid": 0.48
+    },
+    "Sigma 35mm f/1.4 Art": {
+      "k1": -0.09,
+      "k2": 0.02,
+      "ca_r": -0.9,
+      "ca_b": 0.8,
+      "vig": 0.28,
+      "vig_mid": 0.55
+    },
+    "Vintage Helios 44-2": {
+      "k1": -0.18,
+      "k2": 0.06,
+      "ca_r": -2.5,
+      "ca_b": 2.2,
+      "vig": 0.55,
+      "vig_mid": 0.45
+    }
+  }
+}
